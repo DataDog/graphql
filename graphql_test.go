@@ -8,7 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/99designs/gqlgen/handler"
 	"github.com/shurcooL/graphql"
+	"github.com/shurcooL/graphql/internal/testserver"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestClient_Query_partialDataWithErrorResponse(t *testing.T) {
@@ -151,6 +154,56 @@ func TestClient_Query_emptyVariables(t *testing.T) {
 	if got, want := q.User.Name, "Gopher"; got != want {
 		t.Errorf("got q.User.Name: %q, want: %q", got, want)
 	}
+}
+
+func TestClient_Subscription(t *testing.T) {
+	server := httptest.NewServer(handler.GraphQL(
+		testserver.NewExecutableSchema(testserver.Config{Resolvers: &testserver.Resolver{
+			TodoStore: []*testserver.Todo{
+				&testserver.Todo{
+					Text: "first",
+				},
+				&testserver.Todo{
+					Text: "second",
+				},
+				&testserver.Todo{
+					Text: "third",
+				},
+			},
+		}}),
+	))
+	defer server.Close()
+	client := graphql.NewClient(server.URL, http.DefaultClient)
+
+	type todoQuery struct {
+		Todos []struct {
+			Text graphql.String
+		}
+	}
+	var q todoQuery
+	err := client.Query(context.Background(), &q, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rx, cancel, err := client.Subscribe(context.Background(), &q, nil)
+	defer cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	todoMessages := make([]string, 3)
+	i := 0
+	for raw := range rx {
+		data, ok := raw.(*todoQuery)
+		assert.True(t, ok)
+		todoMessages[i] = string(data.Todos[0].Text)
+		i++
+		if i > 2 {
+			break
+		}
+	}
+	assert.Equal(t, []string{"first", "second", "third"}, todoMessages)
 }
 
 // localRoundTripper is an http.RoundTripper that executes HTTP transactions

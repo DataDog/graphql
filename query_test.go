@@ -271,6 +271,41 @@ func TestConstructMutation(t *testing.T) {
 	}
 }
 
+func TestConstructSubscription(t *testing.T) {
+	tests := []struct {
+		inV         interface{}
+		inVariables map[string]interface{}
+		want        string
+	}{
+		{
+			inV: struct {
+				AddReaction struct {
+					Subject struct {
+						ReactionGroups []struct {
+							Users struct {
+								TotalCount Int
+							}
+						}
+					}
+				} `graphql:"addReaction(input:$input)"`
+			}{},
+			inVariables: map[string]interface{}{
+				"input": AddReactionInput{
+					SubjectID: "MDU6SXNzdWUyMzE1MjcyNzk=",
+					Content:   ReactionContentThumbsUp,
+				},
+			},
+			want: `subscription($input:AddReactionInput!){addReaction(input:$input){subject{reactionGroups{users{totalCount}}}}}`,
+		},
+	}
+	for _, tc := range tests {
+		got := constructSubscription(tc.inV, tc.inVariables)
+		if got != tc.want {
+			t.Errorf("\ngot:  %q\nwant: %q\n", got, tc.want)
+		}
+	}
+}
+
 func TestQueryArguments(t *testing.T) {
 	tests := []struct {
 		in   map[string]interface{}
